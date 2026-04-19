@@ -1,19 +1,26 @@
 {
+  "$schema": "https://json.schemastore.org/package.json",
+
   "name": "server",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
   "type": "module",
+
   "scripts": {
     "start": "tsx server.ts",
     "server": "nodemon --exec tsx server.ts",
     "build": "tsc"
   },
+
   "keywords": [],
   "author": "",
   "license": "ISC",
+
   "dependencies": {
+    "@google/genai": "^1.50.1",
     "bcrypt": "^6.0.0",
+    "cloudinary": "^2.9.0",
     "connect-mongo": "^6.0.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
@@ -22,6 +29,7 @@
     "mongodb": "^7.1.1",
     "mongoose": "^9.4.1"
   },
+
   "devDependencies": {
     "@types/bcrypt": "^6.0.0",
     "@types/cors": "^2.8.19",
