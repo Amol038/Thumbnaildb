@@ -61,8 +61,51 @@ app.use(
   }),
 );
 
-app.get("/", (_req, res) => {
-  res.send("Server is Live!");
+const getApiOverview = (host: string) => ({
+  status: "ok",
+  message: "Thumbnail backend API is running",
+  baseUrl: host,
+  routes: {
+    health: "/",
+    apiInfo: "/api",
+    auth: {
+      register: "POST /api/auth/register",
+      login: "POST /api/auth/login",
+      verify: "GET /api/auth/verify",
+      logout: "POST /api/auth/logout",
+    },
+    thumbnails: {
+      generate: "POST /api/thumbnail/generate",
+      delete: "DELETE /api/thumbnail/delete/:id",
+    },
+    user: {
+      profile: "GET /api/user/profile",
+      updateProfile: "PATCH /api/user/profile",
+      thumbnails: "GET /api/user/thumbnails",
+      thumbnailById: "GET /api/user/thumbnail/:id",
+    },
+    contact: {
+      submit: "POST /api/contact",
+    },
+    staticFiles: {
+      images: "/images/:filename",
+    },
+  },
+  gemini: {
+    provider: "Google Gemini",
+    imageModel: process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image",
+    note: "Set GEMINI_API_KEY, GEMINI_IMAGE_MODEL, MONGODB_URI, SESSION_SECRET, and CLIENT_URL in backend .env.",
+  },
+});
+
+app.get("/", (req, res) => {
+  const host = `${req.protocol}://${req.get("host")}`;
+  res.json(getApiOverview(host));
+});
+
+app.get("/api", (req, res) => {
+  const host = `${req.protocol}://${req.get("host")}`;
+  res.json(getApiOverview(host));
 });
 
 app.use("/api/auth", AuthRouter);
