@@ -3,8 +3,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { v2 as cloudinary } from "cloudinary";
-import ai from "../configs/ai.js";
 import Thumbnail from "../models/Thumbnail.js";
+import {
+  ImageGenerationError,
+  generateImage,
+  resolveImageModel,
+  resolveImageProviderName,
+} from "../configs/ai.js";
 import {
   type ThumbnailAspectRatioValue,
   type ThumbnailColorSchemeValue,
@@ -60,10 +65,6 @@ type GeminiErrorPayload = {
 const currentFilePath = fileURLToPath(import.meta.url);
 const currentDirectory = path.dirname(currentFilePath);
 const imagesDirectory = path.resolve(currentDirectory, "../images");
-const imageModelAliases: Record<string, string> = {
-  "gemini-2.5-flash-preview-image": "gemini-2.5-flash-image",
-  "gemini-2.5-flash-image-preview": "gemini-2.5-flash-image",
-};
 const hasCloudinaryConfig = Boolean(
   process.env.CLOUD_NAME &&
     process.env.CLOUD_API_KEY &&
@@ -102,13 +103,6 @@ const buildPrompt = (
   return prompt;
 };
 
-const resolveImageModel = () => {
-  const configuredModel =
-    process.env.GEMINI_IMAGE_MODEL?.trim() || "gemini-2.5-flash-image";
-
-  return imageModelAliases[configuredModel] ?? configuredModel;
-};
-
 const buildPublicImageUrl = (req: Request, filename: string) => {
   const publicServerUrl = process.env.PUBLIC_SERVER_URL?.replace(/\/$/, "");
   if (publicServerUrl) {
@@ -140,6 +134,34 @@ const getRetryAfterSeconds = (payload: GeminiErrorPayload | null) => {
 };
 
 const normalizeGenerationError = (error: unknown, model: string) => {
+  if (error instanceof ImageGenerationError) {
+    if (error.status === 429) {
+      let message = "Image generation is temporarily rate limited.";
+
+      if (error.retryAfterSeconds) {
+        message += ` Retry in about ${error.retryAfterSeconds} seconds.`;
+      }
+
+      message += " Please wait a bit and try again.";
+
+      return {
+        status: 429,
+        message,
+        model,
+        retryAfterSeconds: error.retryAfterSeconds,
+        providerStatus: error.providerStatus ?? "RATE_LIMITED",
+      };
+    }
+
+    return {
+      status: error.status,
+      message: error.message,
+      model,
+      retryAfterSeconds: error.retryAfterSeconds,
+      providerStatus: error.providerStatus,
+    };
+  }
+
   const status =
     typeof error === "object" &&
     error !== null &&
@@ -156,15 +178,13 @@ const normalizeGenerationError = (error: unknown, model: string) => {
   const retryAfterSeconds = getRetryAfterSeconds(payload);
 
   if (status === 429 || providerStatus === "RESOURCE_EXHAUSTED") {
-    let message =
-      "Gemini image generation quota is exhausted for this API key/project.";
+    let message = "Image generation is temporarily rate limited.";
 
     if (retryAfterSeconds) {
       message += ` Retry in about ${retryAfterSeconds} seconds.`;
     }
 
-    message +=
-      " If this keeps happening, switch to a billed Gemini project or wait for your quota window to reset.";
+    message += " Please wait a bit and try again.";
 
     return {
       status: 429,
@@ -188,6 +208,7 @@ export const generateThumbnail = async (req: Request, res: Response) => {
   let localFilePath: string | null = null;
   let keepLocalFile = false;
   const model = resolveImageModel();
+  const provider = resolveImageProviderName();
 
   try {
     const userId = req.session.userId;
@@ -220,27 +241,15 @@ export const generateThumbnail = async (req: Request, res: Response) => {
       userPrompt,
     );
 
-    const response = await ai.models.generateContent({
-      model,
-      contents: prompt,
+    const generationResult = await generateImage({
+      prompt,
+      aspectRatio,
     });
-
-    const parts = response.candidates?.[0]?.content?.parts;
-    if (!parts) {
-      throw new Error("No image returned from Gemini");
-    }
-
-    const imagePart = parts.find((part) => part.inlineData?.data);
-    if (!imagePart?.inlineData?.data) {
-      throw new Error("Gemini did not return image data");
-    }
-
-    const imageBuffer = Buffer.from(imagePart.inlineData.data, "base64");
     const filename = `thumbnail-${Date.now()}.png`;
 
     fs.mkdirSync(imagesDirectory, { recursive: true });
     localFilePath = path.join(imagesDirectory, filename);
-    fs.writeFileSync(localFilePath, imageBuffer);
+    fs.writeFileSync(localFilePath, generationResult.imageBuffer);
 
     let imageUrl = buildPublicImageUrl(req, filename);
 
@@ -277,7 +286,7 @@ export const generateThumbnail = async (req: Request, res: Response) => {
 
     if (normalizedError.status === 429) {
       console.warn(
-        `Gemini quota exceeded for model ${normalizedError.model}. Retry after ${normalizedError.retryAfterSeconds ?? "unknown"} seconds.`,
+        `${provider} rate limit reached for model ${normalizedError.model}. Retry after ${normalizedError.retryAfterSeconds ?? "unknown"} seconds.`,
       );
 
       if (normalizedError.retryAfterSeconds) {
@@ -292,6 +301,7 @@ export const generateThumbnail = async (req: Request, res: Response) => {
 
     return res.status(normalizedError.status).json({
       message: normalizedError.message,
+      provider,
       model: normalizedError.model,
       retryAfterSeconds: normalizedError.retryAfterSeconds,
       providerStatus: normalizedError.providerStatus,

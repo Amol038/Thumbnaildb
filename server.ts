@@ -104,10 +104,10 @@ const getApiOverview = (host: string) => ({
       images: "/images/:filename",
     },
   },
-  gemini: {
-    provider: "Google Gemini",
-    imageModel: process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image",
-    note: "Set GEMINI_API_KEY, GEMINI_IMAGE_MODEL, MONGODB_URI, SESSION_SECRET, and CLIENT_URL in backend .env.",
+  imageGeneration: {
+    provider: "Pollinations AI",
+    imageModel: process.env.POLLINATIONS_IMAGE_MODEL || "flux",
+    note: "Set POLLINATIONS_API_KEY (optional), POLLINATIONS_IMAGE_MODEL, MONGODB_URI, SESSION_SECRET, and CLIENT_URL in backend .env.",
   },
 });
 
