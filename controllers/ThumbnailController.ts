@@ -5,8 +5,15 @@ import { fileURLToPath } from "node:url";
 import { v2 as cloudinary } from "cloudinary";
 import ai from "../configs/ai.js";
 import Thumbnail from "../models/Thumbnail.js";
+import {
+  type ThumbnailAspectRatioValue,
+  type ThumbnailColorSchemeValue,
+  type ThumbnailStyleValue,
+  hasValidationErrors,
+  validateThumbnailGenerationPayload,
+} from "../utils/validation.js";
 
-const stylePrompts = {
+const stylePrompts: Record<ThumbnailStyleValue, string> = {
   "Bold & Graphic":
     "eye-catching YouTube thumbnail, bold typography, vibrant colors, expressive facial reaction, dramatic lighting, high contrast, click-worthy composition, professional style",
   "Tech/Futuristic":
@@ -17,9 +24,9 @@ const stylePrompts = {
     "photorealistic YouTube thumbnail, ultra-realistic lighting, natural skin tones, candid moment, DSLR-style photography, lifestyle realism, shallow depth of field",
   Illustrated:
     "illustrated YouTube thumbnail, custom digital illustration, stylized characters, bold outlines, vibrant colors, creative cartoon or vector art style",
-} as const;
+};
 
-const colorSchemeDescriptions = {
+const colorSchemeDescriptions: Record<ThumbnailColorSchemeValue, string> = {
   vibrant:
     "vibrant and energetic colors, high saturation, bold contrasts, eye-catching palette",
   sunset:
@@ -36,11 +43,8 @@ const colorSchemeDescriptions = {
     "cool blue and teal tones, aquatic color palette, fresh and clean atmosphere",
   pastel:
     "soft pastel colors, low saturation, gentle tones, calm and friendly aesthetic",
-} as const;
+};
 
-type ThumbnailStyleKey = keyof typeof stylePrompts;
-type ColorSchemeKey = keyof typeof colorSchemeDescriptions;
-type AspectRatio = "16:9" | "1:1" | "9:16";
 type GeminiErrorPayload = {
   error?: {
     code?: number;
@@ -55,7 +59,6 @@ type GeminiErrorPayload = {
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const currentDirectory = path.dirname(currentFilePath);
-const validAspectRatios = new Set<AspectRatio>(["16:9", "1:1", "9:16"]);
 const imagesDirectory = path.resolve(currentDirectory, "../images");
 const imageModelAliases: Record<string, string> = {
   "gemini-2.5-flash-preview-image": "gemini-2.5-flash-image",
@@ -77,9 +80,9 @@ if (hasCloudinaryConfig) {
 
 const buildPrompt = (
   title: string,
-  style: ThumbnailStyleKey,
-  aspectRatio: AspectRatio,
-  colorScheme?: ColorSchemeKey,
+  style: ThumbnailStyleValue,
+  aspectRatio: ThumbnailAspectRatioValue,
+  colorScheme?: ThumbnailColorSchemeValue,
   userPrompt?: string,
 ) => {
   let prompt = `Create a ${stylePrompts[style]} for this YouTube video title: "${title}".`;
@@ -193,41 +196,22 @@ export const generateThumbnail = async (req: Request, res: Response) => {
     }
 
     const {
-      title,
-      prompt: rawUserPrompt,
-      style,
-      aspect_ratio: rawAspectRatio,
-      color_scheme: rawColorScheme,
-    } = req.body as {
-      title?: string;
-      prompt?: string;
-      style?: string;
-      aspect_ratio?: AspectRatio;
-      color_scheme?: string;
-    };
+      errors,
+      normalizedTitle,
+      userPrompt,
+      selectedStyle,
+      selectedAspectRatio,
+      selectedColorScheme,
+    } = validateThumbnailGenerationPayload(req.body ?? {});
 
-    const normalizedTitle = title?.trim();
-    const userPrompt = rawUserPrompt?.trim();
-    const aspectRatio = rawAspectRatio ?? "16:9";
-
-    if (!normalizedTitle) {
-      return res.status(400).json({ message: "Title is required" });
+    if (hasValidationErrors(errors) || !selectedStyle) {
+      return res.status(422).json({
+        message: "Please correct the highlighted fields.",
+        errors,
+      });
     }
 
-    if (!style || !(style in stylePrompts)) {
-      return res.status(400).json({ message: "Invalid thumbnail style" });
-    }
-
-    if (!validAspectRatios.has(aspectRatio)) {
-      return res.status(400).json({ message: "Invalid aspect ratio" });
-    }
-
-    if (rawColorScheme && !(rawColorScheme in colorSchemeDescriptions)) {
-      return res.status(400).json({ message: "Invalid color scheme" });
-    }
-
-    const selectedStyle = style as ThumbnailStyleKey;
-    const selectedColorScheme = rawColorScheme as ColorSchemeKey | undefined;
+    const aspectRatio: ThumbnailAspectRatioValue = selectedAspectRatio;
     const prompt = buildPrompt(
       normalizedTitle,
       selectedStyle,

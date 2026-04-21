@@ -1,13 +1,23 @@
 import mongoose, { Document } from "mongoose";
+import {
+    THUMBNAIL_ASPECT_RATIOS,
+    THUMBNAIL_COLOR_SCHEMES,
+    THUMBNAIL_PROMPT_MAX_LENGTH,
+    THUMBNAIL_STYLES,
+    THUMBNAIL_TITLE_MAX_LENGTH,
+    THUMBNAIL_TITLE_MIN_LENGTH,
+    type ThumbnailAspectRatioValue,
+    type ThumbnailColorSchemeValue,
+    type ThumbnailStyleValue,
+} from "../utils/validation.js";
 
 export interface IThumbnail extends Document{
-     _id: string;
     userId: string;
     title: string;
     description?: string;
-    style: "Bold & Graphic" | "Tech/Futuristic" | "Minimalist" | "Photorealistic" | "Illustrated";
-    aspect_ratio?: "16:9" | "1:1" | "9:16";
-    color_scheme?: "vibrant" | "sunset" | "forest" | "neon" | "purple" | "monochrome" | "ocean" | "pastel";
+    style: ThumbnailStyleValue;
+    aspect_ratio?: ThumbnailAspectRatioValue;
+    color_scheme?: ThumbnailColorSchemeValue;
     text_overlay?: boolean;
     image_url?: string;
     prompt_used?: string;
@@ -19,20 +29,26 @@ export interface IThumbnail extends Document{
 const ThumbnailSchema = new mongoose.Schema<IThumbnail>(
     {
 userId: { type: String, ref: 'User', required: true },
-title: { type: String, required: true, trim: true },
+title: {
+    type: String,
+    required: true,
+    trim: true,
+    minlength: THUMBNAIL_TITLE_MIN_LENGTH,
+    maxlength: THUMBNAIL_TITLE_MAX_LENGTH,
+},
 description: { type: String, trim: true },
-style: { type: String, required: true, enum: ["Bold & Graphic", 
-"Tech/Futuristic", "Minimalist", "Photorealistic", 
-"Illustrated"] },
-aspect_ratio: { type: String, enum: ["16:9", "1:1", "9:16"], 
+style: { type: String, required: true, enum: [...THUMBNAIL_STYLES] },
+aspect_ratio: { type: String, enum: [...THUMBNAIL_ASPECT_RATIOS], 
 default: '16:9' },
-color_scheme: { type: String, enum: ["vibrant", "sunset", 
-"forest", "neon", "purple", "monochrome", "ocean", 
-"pastel"] },
+color_scheme: { type: String, enum: [...THUMBNAIL_COLOR_SCHEMES] },
 text_overlay: { type: Boolean, default: false },
 image_url: { type: String, default: '' },
 prompt_used: { type: String },
-user_prompt: { type: String },
+user_prompt: {
+    type: String,
+    trim: true,
+    maxlength: THUMBNAIL_PROMPT_MAX_LENGTH,
+},
 isGenerating: { type: Boolean, default: true },
     },
     { timestamps: true }

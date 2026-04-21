@@ -1,6 +1,11 @@
 import { Request, Response } from 'express'
 import User from '../models/User.js';
 import bcrypt from 'bcrypt'
+import {
+  hasValidationErrors,
+  validateLoginPayload,
+  validateRegisterPayload,
+} from "../utils/validation.js";
 
 // ✅ FIX: extend session type
 import "express-session";
@@ -15,19 +20,34 @@ declare module "express-session" {
 // Controllers For User Registration
 export const registerUser = async (req: Request, res: Response) => {
   try {
-    const {name, email, password} = req.body;
+    const { errors, normalizedName, normalizedEmail, password } =
+      validateRegisterPayload(req.body ?? {});
+
+    if (hasValidationErrors(errors)) {
+      return res.status(422).json({
+        message: "Please correct the highlighted fields.",
+        errors,
+      });
+    }
 
     // find user by email
-    const user = await User.findOne({email});
+    const user = await User.findOne({ email: normalizedEmail });
     if(user){
-        return res.status(400).json({message: 'User already exist'})
+        return res.status(409).json({
+            message: 'An account with this email already exists',
+            errors: { email: "This email is already registered." },
+        })
     }
 
     // Encrypt the password
     const salt = await bcrypt.genSalt(10)
     const hashedPassword = await bcrypt.hash(password, salt)
 
-    const newUser = new User({name, email, password: hashedPassword})
+    const newUser = new User({
+        name: normalizedName,
+        email: normalizedEmail,
+        password: hashedPassword,
+    })
     await newUser.save()
 
     // setting user data in session
@@ -52,17 +72,26 @@ export const registerUser = async (req: Request, res: Response) => {
 // Controller for User Login
 export const loginUser = async (req: Request, res: Response) => {
   try {
-    const { email, password} = req.body;
+    const { errors, normalizedEmail, password } = validateLoginPayload(
+      req.body ?? {},
+    );
+
+    if (hasValidationErrors(errors)) {
+      return res.status(422).json({
+        message: "Please correct the highlighted fields.",
+        errors,
+      });
+    }
 
     // find user by email
-    const user = await User.findOne({email});
+    const user = await User.findOne({ email: normalizedEmail });
     if(!user){
-        return res.status(400).json({message: 'Invalid email or password'})
+        return res.status(401).json({message: 'Invalid email or password'})
     }
 
     const isPasswordCorrect = await bcrypt.compare(password,user.password)
     if(!isPasswordCorrect){
-        return res.status(400).json({message: 'Invalid email or password'})
+        return res.status(401).json({message: 'Invalid email or password'})
     }
 
     // setting user data in session
