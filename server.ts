@@ -18,12 +18,21 @@ const currentDirectory = path.dirname(currentFilePath);
 const app = express();
 const mongoUrl = process.env.MONGODB_URI;
 const sessionSecret = process.env.SESSION_SECRET;
-const allowedOrigins = process.env.CLIENT_URL
-  ? process.env.CLIENT_URL
-      .split(",")
-      .map((origin) => origin.trim())
-      .filter(Boolean)
-  : ["http://localhost:5173"];
+const defaultAllowedOrigins = [
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+];
+const normalizeOrigin = (origin: string) => origin.trim().replace(/\/$/, "");
+const allowedOrigins = Array.from(
+  new Set(
+    (process.env.CLIENT_URL
+      ? process.env.CLIENT_URL.split(",")
+      : defaultAllowedOrigins
+    )
+      .map(normalizeOrigin)
+      .filter(Boolean),
+  ),
+);
 
 if (!mongoUrl) {
   throw new Error("MONGODB_URI is required");
@@ -36,8 +45,12 @@ if (!sessionSecret) {
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (!origin) {
         return callback(null, true);
+      }
+
+      if (allowedOrigins.includes(normalizeOrigin(origin))) {
+        return callback(null, origin);
       }
 
       return callback(new Error("Origin not allowed by CORS"));
@@ -120,6 +133,7 @@ const startServer = async () => {
     await connectDB();
     app.listen(port, () => {
       console.log(`Server running at http://localhost:${port}`);
+      console.log(`Allowed CORS origins: ${allowedOrigins.join(", ")}`);
     });
   } catch (error) {
     console.error("Server Error:", error);

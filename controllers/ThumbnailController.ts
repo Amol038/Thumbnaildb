@@ -295,6 +295,13 @@ export const generateThumbnail = async (req: Request, res: Response) => {
       console.warn(
         `Gemini quota exceeded for model ${normalizedError.model}. Retry after ${normalizedError.retryAfterSeconds ?? "unknown"} seconds.`,
       );
+
+      if (normalizedError.retryAfterSeconds) {
+        res.setHeader(
+          "Retry-After",
+          normalizedError.retryAfterSeconds.toString(),
+        );
+      }
     } else {
       console.error("Thumbnail generation error:", error);
     }
